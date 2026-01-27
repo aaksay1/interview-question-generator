@@ -83,8 +83,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",  # Local development
-        "https://my-frontend.vercel.app",  # Update with your actual frontend URL
-        # Add your production frontend URL here when deployed
+        "https://interview-question-generator-mocha.vercel.app",  # Production frontend
     ],
     allow_credentials=True,
     allow_methods=["*"],
