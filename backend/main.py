@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from dotenv import load_dotenv
 
@@ -42,17 +42,30 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 
+def get_embeddings(app: FastAPI):
+    """
+    Lazy load embeddings model to reduce memory usage on startup.
+    Initializes embeddings on first request and caches for subsequent requests.
+    """
+    if app.state.embeddings is None:
+        logger.info("Initializing embeddings model (lazy loading)...")
+        app.state.embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        )
+        logger.info("Embeddings initialized successfully")
+    return app.state.embeddings
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Lifespan context manager for FastAPI app.
-    Initializes embeddings model on startup (reused for all requests).
+    Uses lazy loading for embeddings to reduce memory usage on startup.
     """
-    logger.info("Initializing embeddings model...")
-    app.state.embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
-    )
-    logger.info("Embeddings initialized successfully")
+    # Don't load embeddings on startup to save memory
+    # They will be loaded on first request (lazy loading)
+    app.state.embeddings = None
+    logger.info("Application started (embeddings will be loaded on first request)")
     yield
     logger.info("Shutting down...")
 
@@ -183,11 +196,13 @@ async def generate_questions(
         # ============================================================
         # Create embeddings for each chunk and build vectorstore
         # This enables semantic search to find relevant resume sections
+        # Embeddings are loaded lazily on first request to save memory
         logger.info("Building FAISS vectorstore...")
         try:
+            embeddings = get_embeddings(app)  # Lazy load embeddings
             vectorstore = FAISS.from_texts(
                 chunks,
-                app.state.embeddings  # Reuse embeddings initialized on startup
+                embeddings
             )
         except Exception as e:
             logger.error(f"Vectorstore creation error: {str(e)}")
