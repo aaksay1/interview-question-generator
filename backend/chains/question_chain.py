@@ -1,11 +1,23 @@
+"""
+LLM chain for generating interview questions from job descriptions and resumes.
+
+This module handles communication with Groq LLM to generate tailored
+interview questions based on job descriptions and relevant resume sections.
+"""
+import os
+import logging
+from typing import List
+
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
 
-# -----------------------------
-# System & user prompts
-# -----------------------------
-SYSTEM_PROMPT = """
-You are a hiring manager conducting a real interview.
+logger = logging.getLogger(__name__)
+
+# ============================================================
+# PROMPT TEMPLATES
+# ============================================================
+
+SYSTEM_PROMPT = """You are a hiring manager conducting a real interview.
 
 Your task is to generate interview questions that test whether
 the candidate truly understands and can defend the experience
@@ -15,11 +27,9 @@ Rules:
 - Questions must reference the candidate's experience implicitly or explicitly
 - Avoid generic questions
 - Prefer follow-up and depth-probing questions
-- Output must be realistic and role-specific
-"""
+- Output must be realistic and role-specific"""
 
-QUESTION_PROMPT_TEMPLATE = """
-Job description:
+QUESTION_PROMPT_TEMPLATE = """Job description:
 {job_description}
 
 Relevant resume context:
@@ -33,40 +43,109 @@ Return JSON with this schema:
     "category": "Technical | Behavioral | Role-Specific",
     "question": "string"
   }}
-]
-"""
+]"""
 
-# -----------------------------
-# Core function to call LLM
-# -----------------------------
-def generate_questions_for_jd(jd_chunk: str, resume_chunks: list) -> str:
-    llm = ChatGroq(
-        model="llama-3.1-8b-instant",
-        temperature=0.4
-    )
 
-    # Convert Document objects to strings if needed
-    resume_texts = [chunk.page_content if hasattr(chunk, "page_content") else str(chunk) for chunk in resume_chunks]
-    resume_context = "\n\n".join(resume_texts)
+def get_groq_api_key() -> str:
+    """
+    Retrieves the Groq API key from environment variables.
+    
+    Returns:
+        The Groq API key string
+        
+    Raises:
+        ValueError: If GROQ_API_KEY is not set in environment variables
+    """
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise ValueError(
+            "GROQ_API_KEY environment variable is not set. "
+            "Please set it in your .env file or environment."
+        )
+    return api_key
 
-    prompt = QUESTION_PROMPT_TEMPLATE.format(
-        job_description=jd_chunk,
-        resume_context=resume_context
-    )
 
-    # Call LLM with proper message format
-    messages = [
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=prompt)
-    ]
-    response = llm.invoke(messages)
+def generate_questions_for_jd(job_description: str, resume_chunks: List) -> str:
+    """
+    Generates interview questions using Groq LLM.
+    
+    Flow:
+    1. Get API key from environment
+    2. Initialize ChatGroq LLM
+    3. Convert resume chunks to text
+    4. Format prompt with job description + resume context
+    5. Call LLM with system + user messages
+    6. Extract text content from AIMessage response
+    
+    Args:
+        job_description: Job description text
+        resume_chunks: List of Document objects from FAISS similarity search
+        
+    Returns:
+        LLM response as string (contains JSON array of questions)
+        
+    Raises:
+        ValueError: If GROQ_API_KEY is not set or resume context is empty
+        Exception: If LLM call fails
+    """
+    try:
+        # Get API key from environment
+        api_key = get_groq_api_key()
+        
+        # Initialize LLM with Groq
+        llm = ChatGroq(
+            model="llama-3.1-8b-instant",
+            temperature=0.4,  # Lower temperature for more consistent output
+            groq_api_key=api_key
+        )
 
-    # Extract content from AIMessage object
-    if hasattr(response, 'content'):
-        return response.content
-    elif isinstance(response, str):
-        return response
-    else:
-        # Fallback: try to convert to string
-        return str(response)
+        # Convert Document objects to strings
+        # FAISS returns Document objects with page_content attribute
+        resume_texts = [
+            chunk.page_content if hasattr(chunk, "page_content") else str(chunk) 
+            for chunk in resume_chunks
+        ]
+        resume_context = "\n\n".join(resume_texts)
+        
+        # Validate that we have resume context
+        if not resume_context or not resume_context.strip():
+            logger.warning("Resume context is empty or contains no text")
+            raise ValueError("Resume context is empty. Cannot generate questions.")
 
+        # Format prompt with job description and resume context
+        prompt = QUESTION_PROMPT_TEMPLATE.format(
+            job_description=job_description,
+            resume_context=resume_context
+        )
+
+        # Prepare messages for LLM
+        # System message sets the role and behavior
+        # Human message contains the actual prompt
+        messages = [
+            SystemMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=prompt)
+        ]
+        
+        # Call LLM
+        logger.info("Calling Groq LLM to generate questions...")
+        response = llm.invoke(messages)
+
+        # Extract content from AIMessage object
+        # LangChain returns AIMessage objects, not plain strings
+        if hasattr(response, 'content'):
+            response_text = response.content
+        elif isinstance(response, str):
+            response_text = response
+        else:
+            # Fallback: try to convert to string
+            response_text = str(response)
+        
+        logger.info(f"Received LLM response (length: {len(response_text)} chars)")
+        return response_text
+        
+    except ValueError as e:
+        # Re-raise validation errors
+        raise
+    except Exception as e:
+        logger.error(f"Error calling Groq LLM: {str(e)}")
+        raise Exception(f"Failed to generate questions: {str(e)}")

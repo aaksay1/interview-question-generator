@@ -1,0 +1,178 @@
+# Interview Question Generator - Backend
+
+FastAPI backend service that generates tailored interview questions from resumes and job descriptions using AI.
+
+## Features
+
+- **PDF Resume Processing**: Extracts text from PDF resumes with robust error handling
+- **Semantic Search**: Uses FAISS vectorstore to find relevant resume sections
+- **AI-Powered Question Generation**: Leverages Groq LLM to generate contextual interview questions
+- **Input Validation**: Validates file size (5MB max), file type (PDF only), and job description length
+- **Error Handling**: Comprehensive error handling with clear error messages
+- **Logging**: Detailed logging for debugging and monitoring
+
+## Setup
+
+### Prerequisites
+
+- Python 3.8 or higher
+- pip package manager
+
+### Installation
+
+1. **Navigate to the backend directory:**
+   ```bash
+   cd backend
+   ```
+
+2. **Create a virtual environment (recommended):**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Set up environment variables:**
+   
+   Create a `.env` file in the `backend/` directory:
+   ```env
+   GROQ_API_KEY=your_groq_api_key_here
+   ```
+   
+   You can get a Groq API key from [https://console.groq.com/](https://console.groq.com/)
+
+5. **Run the server:**
+   ```bash
+   uvicorn main:app --reload
+   ```
+   
+   The API will be available at `http://localhost:8000`
+   
+   API documentation (Swagger UI) will be available at `http://localhost:8000/docs`
+
+## API Endpoints
+
+### POST `/generate-questions`
+
+Generates interview questions from a resume PDF and job description.
+
+**Request:**
+- `resume` (file): PDF file (max 5MB)
+- `job_description` (form field): Text description of the job (10-10000 characters)
+
+**Response:**
+```json
+{
+  "questions": [
+    {
+      "category": "Technical",
+      "question": "Can you explain how you implemented..."
+    },
+    {
+      "category": "Behavioral",
+      "question": "Tell me about a time when..."
+    }
+  ]
+}
+```
+
+**Error Responses:**
+- `400`: Validation errors (invalid file type, file too large, empty job description)
+- `413`: File size exceeds 5MB
+- `500`: Server errors (PDF parsing failure, LLM errors, etc.)
+
+## Project Structure
+
+```
+backend/
+├── main.py                 # FastAPI application and endpoints
+├── chains/
+│   └── question_chain.py   # LLM chain for question generation
+├── utils/
+│   ├── validation.py       # Input validation utilities
+│   ├── pdf_parser.py      # PDF text extraction
+│   ├── chunker.py         # Text chunking logic
+│   └── parsing.py         # JSON extraction from LLM responses
+├── requirements.txt        # Python dependencies
+├── .env                   # Environment variables (not in git)
+└── README.md             # This file
+```
+
+## Configuration
+
+### File Size Limits
+- Maximum resume file size: 5MB (configurable in `utils/validation.py`)
+
+### Job Description Limits
+- Minimum length: 10 characters
+- Maximum length: 10,000 characters
+
+### Chunking Strategy
+The system automatically adjusts chunking based on resume length:
+- Short resumes (< 2000 chars): Smaller chunks (500 chars) with more overlap
+- Medium resumes (2000-10000 chars): Standard chunks (1000 chars)
+- Long resumes (> 10000 chars): Larger chunks (1500 chars) with more overlap
+
+## Error Handling
+
+The backend includes comprehensive error handling for:
+- Invalid file types
+- File size violations
+- PDF parsing failures (blank pages, corrupted files)
+- Empty or invalid job descriptions
+- LLM API failures
+- Vectorstore creation failures
+- Network errors
+
+All errors return appropriate HTTP status codes with descriptive error messages.
+
+## Logging
+
+The application logs:
+- Request information (file names, job description length)
+- Processing steps (PDF extraction, chunking, vectorstore creation)
+- LLM responses (first 500 characters for debugging)
+- Errors with full stack traces
+
+Logs are output to stdout with timestamps and log levels.
+
+## Development
+
+### Running Tests
+
+Test files are available in the backend directory:
+- `test_pdf.py`: PDF parsing tests
+- `test_chain.py`: LLM chain tests
+- `test_embeddings.py`: Embedding tests
+- `test_chunking.py`: Chunking tests
+
+### Adding New Features
+
+1. **New utilities**: Add to `utils/` directory
+2. **New chains**: Add to `chains/` directory
+3. **New endpoints**: Add to `main.py`
+
+## Troubleshooting
+
+### "GROQ_API_KEY environment variable is not set"
+- Ensure you have a `.env` file in the `backend/` directory
+- Verify the `.env` file contains `GROQ_API_KEY=your_key_here`
+- Restart the server after creating/modifying `.env`
+
+### "Failed to extract questions from LLM response"
+- Check the logs for the raw LLM response
+- The LLM may have returned a response in an unexpected format
+- Try regenerating questions
+
+### PDF parsing errors
+- Ensure the PDF contains extractable text (not just images)
+- Try a different PDF file
+- Check logs for specific error messages
+
+## License
+
+This project is part of the Interview Question Generator application.
