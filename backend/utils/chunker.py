@@ -6,7 +6,7 @@ Chunking strategy adapts based on resume length to optimize for:
 - Medium resumes: Balanced chunking
 - Long resumes: Efficient processing with larger chunks
 """
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from typing import List
 import logging
 
