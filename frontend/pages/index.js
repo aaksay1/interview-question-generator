@@ -16,8 +16,10 @@ import Head from 'next/head'
 // Constants
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB in bytes
 const MIN_JOB_DESCRIPTION_LENGTH = 10
-// Use production backend URL, fallback to localhost for local development
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000') + "/generate-questions";
+
+// API URL: Use environment variable if set, otherwise default to production backend
+// For local development, set NEXT_PUBLIC_API_URL=http://localhost:8000 in .env.local
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://interview-question-generator-lqa9.onrender.com') + "/generate-questions";
 
 export default function Home() {
   // State management
@@ -219,11 +221,12 @@ export default function Home() {
     } catch (err) {
       // Handle network errors
       if (err.name === 'TypeError' && err.message.includes('fetch')) {
-        setError('Unable to connect to the server. Please ensure the backend is running on http://localhost:8000')
+        setError(`Unable to connect to the server at ${API_URL}. Please check if the backend is running and accessible.`)
       } else {
         setError(err.message || 'Failed to generate questions. Please try again.')
       }
       console.error('Error:', err)
+      console.error('API URL used:', API_URL)
     } finally {
       setLoading(false)
     }
