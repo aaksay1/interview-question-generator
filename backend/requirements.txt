@@ -11,3 +11,4 @@ faiss-cpu
 PyPDF2
 pdfplumber
 tiktoken
+python-multipart
