@@ -1,5 +1,6 @@
 fastapi
 uvicorn[standard]
+python-multipart
 python-dotenv
 langchain
 langchain-groq
@@ -11,4 +12,3 @@ faiss-cpu
 PyPDF2
 pdfplumber
 tiktoken
-python-multipart
