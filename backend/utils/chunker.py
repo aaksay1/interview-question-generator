@@ -53,8 +53,14 @@ def chunk_resume_text(text: str, min_chunk_size: int = 500, max_chunk_size: int 
         logger.info(f"Using large chunk strategy for long resume ({text_length} chars)")
     
     # Ensure chunk_size is within bounds
+    # For memory optimization on Render (512MB limit), use smaller chunks
     chunk_size = max(min_chunk_size, min(chunk_size, max_chunk_size))
     chunk_overlap = min(chunk_overlap, chunk_size // 3)  # Overlap shouldn't exceed 1/3 of chunk size
+    
+    # Further reduce chunk sizes for memory optimization
+    if chunk_size > 800:
+        chunk_size = 800  # Cap at 800 chars to save memory
+        chunk_overlap = min(200, chunk_size // 3)
     
     # Use RecursiveCharacterTextSplitter with smart separators
     # Tries to split on paragraphs first, then sentences, then words

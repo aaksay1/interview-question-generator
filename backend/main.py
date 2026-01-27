@@ -12,6 +12,7 @@ Run locally: uvicorn backend.main:app --reload
 import os
 import tempfile
 import logging
+import gc
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
@@ -41,18 +42,30 @@ logger = logging.getLogger(__name__)
 # Load environment variables (GROQ_API_KEY)
 load_dotenv()
 
+# Set environment variables to reduce memory usage
+os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Disable tokenizer parallelism to save memory
+
 
 def get_embeddings(app: FastAPI):
     """
     Lazy load embeddings model to reduce memory usage on startup.
     Initializes embeddings on first request and caches for subsequent requests.
+    Uses memory-efficient settings for Render's 512MB limit.
+    Using paraphrase-MiniLM-L3-v2 (smaller model, ~80MB vs ~130MB for L6-v2)
     """
     if app.state.embeddings is None:
-        logger.info("Initializing embeddings model (lazy loading)...")
+        logger.info("Initializing embeddings model (lazy loading with memory optimization)...")
         app.state.embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
+            model_name="sentence-transformers/paraphrase-MiniLM-L3-v2",  # Smaller model for Render free tier
+            model_kwargs={
+                'device': 'cpu',  # Use CPU to save memory
+            },
+            encode_kwargs={
+                'normalize_embeddings': True,  # Normalize for better similarity
+                'batch_size': 8,  # Smaller batch size to reduce memory
+            }
         )
-        logger.info("Embeddings initialized successfully")
+        logger.info("Embeddings initialized successfully (using paraphrase-MiniLM-L3-v2)")
     return app.state.embeddings
 
 
@@ -86,8 +99,9 @@ app.add_middleware(
         "https://interview-question-generator-mocha.vercel.app",  # Production frontend
     ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],  # Explicitly allow needed methods
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 
@@ -198,8 +212,16 @@ async def generate_questions(
         # Create embeddings for each chunk and build vectorstore
         # This enables semantic search to find relevant resume sections
         # Embeddings are loaded lazily on first request to save memory
+        # Limit chunks to reduce memory usage (max 20 chunks)
         logger.info("Building FAISS vectorstore...")
+        vectorstore = None
         try:
+            # Limit number of chunks to reduce memory usage
+            max_chunks = 20
+            if len(chunks) > max_chunks:
+                logger.info(f"Limiting chunks from {len(chunks)} to {max_chunks} to save memory")
+                chunks = chunks[:max_chunks]
+            
             embeddings = get_embeddings(app)  # Lazy load embeddings
             vectorstore = FAISS.from_texts(
                 chunks,
@@ -217,6 +239,7 @@ async def generate_questions(
         # ============================================================
         # Use semantic search to find top 3 chunks most relevant to job description
         logger.info("Retrieving relevant resume chunks using semantic search...")
+        retrieved_docs = None
         try:
             retrieved_docs = vectorstore.similarity_search(job_description, k=3)
             if not retrieved_docs:
@@ -234,6 +257,15 @@ async def generate_questions(
                 status_code=500,
                 detail=f"Error searching resume: {str(e)}"
             )
+        finally:
+            # Clean up vectorstore to free memory immediately after use
+            if vectorstore is not None:
+                try:
+                    del vectorstore
+                    gc.collect()  # Force garbage collection
+                    logger.info("Vectorstore cleaned up")
+                except Exception as e:
+                    logger.warning(f"Error cleaning up vectorstore: {str(e)}")
         
         # ============================================================
         # STEP 6: GENERATE QUESTIONS USING GROQ LLM
@@ -280,6 +312,10 @@ async def generate_questions(
             )
         
         logger.info(f"Successfully generated {len(questions)} questions")
+        
+        # Clean up memory before returning
+        gc.collect()
+        
         return JSONResponse(content={"questions": questions})
         
     except HTTPException:
@@ -299,3 +335,6 @@ async def generate_questions(
                 os.remove(tmp_path)
             except Exception as e:
                 logger.warning(f"Failed to remove temp file: {str(e)}")
+        
+        # Force garbage collection to free memory
+        gc.collect()

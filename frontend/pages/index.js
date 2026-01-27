@@ -19,7 +19,19 @@ const MIN_JOB_DESCRIPTION_LENGTH = 10
 
 // API URL: Use environment variable if set, otherwise default to production backend
 // For local development, set NEXT_PUBLIC_API_URL=http://localhost:8000 in .env.local
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://interview-question-generator-lqa9.onrender.com') + "/generate-questions";
+// The env var should be the base URL (without /generate-questions)
+const getApiUrl = () => {
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://interview-question-generator-lqa9.onrender.com';
+  // If the URL already ends with /generate-questions, use it as-is
+  // Otherwise, append /generate-questions
+  if (baseUrl.endsWith('/generate-questions')) {
+    return baseUrl;
+  }
+  // Remove trailing slash if present, then add /generate-questions
+  return baseUrl.replace(/\/$/, '') + '/generate-questions';
+};
+
+const API_URL = getApiUrl();
 
 export default function Home() {
   // State management
@@ -149,6 +161,28 @@ export default function Home() {
   }
 
   /**
+   * Wake up Render service if it's sleeping (free tier)
+   * Makes a quick GET request to the health endpoint
+   */
+  const wakeUpBackend = async () => {
+    try {
+      const baseUrl = API_URL.replace('/generate-questions', '')
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+      
+      await fetch(baseUrl, { 
+        method: 'GET',
+        signal: controller.signal
+      })
+      
+      clearTimeout(timeoutId)
+    } catch (err) {
+      // Ignore wake-up errors, just proceed with main request
+      console.log('Wake-up request completed (backend may be waking up)')
+    }
+  }
+
+  /**
    * Handle form submission
    * Sends resume and job description to backend API
    */
@@ -178,16 +212,27 @@ export default function Home() {
     setLoading(true)
 
     try {
+      // Wake up Render service if it's sleeping (free tier)
+      // This helps reduce timeout errors on first request
+      await wakeUpBackend()
+      
       // Prepare form data
       const formData = new FormData()
       formData.append('resume', resume)
       formData.append('job_description', jobDescription)
 
-      // Send request to backend
+      // Send request to backend with timeout
+      // Note: Render free tier services may sleep - first request might take longer
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 second timeout
+      
       const response = await fetch(API_URL, {
         method: 'POST',
         body: formData,
+        signal: controller.signal,
       })
+      
+      clearTimeout(timeoutId)
 
       // Handle errors
       if (!response.ok) {
@@ -219,13 +264,19 @@ export default function Home() {
         throw new Error('Invalid response format from server')
       }
     } catch (err) {
-      // Handle network errors
-      if (err.name === 'TypeError' && err.message.includes('fetch')) {
-        setError(`Unable to connect to the server at ${API_URL}. Please check if the backend is running and accessible.`)
+      // Handle different types of errors
+      if (err.name === 'AbortError') {
+        setError('Request timed out. The backend might be waking up (Render free tier). Please try again in a moment.')
+      } else if (err.name === 'TypeError' && (err.message.includes('fetch') || err.message.includes('Failed to fetch'))) {
+        setError(`Unable to connect to the server. The backend might be sleeping (Render free tier takes ~30s to wake up). Please wait a moment and try again.`)
+      } else if (err.message) {
+        setError(err.message)
       } else {
-        setError(err.message || 'Failed to generate questions. Please try again.')
+        setError('Failed to generate questions. Please try again.')
       }
       console.error('Error:', err)
+      console.error('Error name:', err.name)
+      console.error('Error message:', err.message)
       console.error('API URL used:', API_URL)
     } finally {
       setLoading(false)
