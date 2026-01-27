@@ -156,6 +156,35 @@ Test files are available in the backend directory:
 2. **New chains**: Add to `chains/` directory
 3. **New endpoints**: Add to `main.py`
 
+## Deployment
+
+### Production Deployment (Render, Railway, etc.)
+
+1. **Set Environment Variables:**
+   - `GROQ_API_KEY`: Your Groq API key (required)
+
+2. **Update CORS Settings:**
+   
+   In `main.py`, update the `allow_origins` list to include your frontend URL:
+   ```python
+   allow_origins=[
+       "http://localhost:3000",  # Local development
+       "https://your-frontend-domain.com",  # Your production frontend URL
+   ],
+   ```
+
+3. **Start Command:**
+   ```
+   uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+   ```
+   (Render sets `$PORT` automatically)
+
+4. **Memory Considerations:**
+   - The embeddings model uses ~200-300MB of memory
+   - Render's free tier has 512MB limit
+   - Embeddings are loaded lazily (on first request) to reduce startup memory
+   - Consider upgrading to a paid plan if you need more memory
+
 ## Troubleshooting
 
 ### "GROQ_API_KEY environment variable is not set"

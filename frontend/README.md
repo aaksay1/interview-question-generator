@@ -21,7 +21,7 @@ A modern Next.js frontend application for generating interview questions from re
 
 - Node.js 16.x or higher
 - npm or yarn package manager
-- Backend API running on `http://localhost:8000` (see backend README)
+- Backend API URL (local or production)
 
 ### Installation
 
@@ -35,12 +35,23 @@ A modern Next.js frontend application for generating interview questions from re
    npm install
    ```
 
-3. **Run the development server:**
+3. **Configure API URL:**
+   
+   Create a `.env.local` file in the `frontend/` directory:
+   ```env
+   # For local development:
+   NEXT_PUBLIC_API_URL=http://localhost:8000
+   
+   # For production (use your backend URL):
+   # NEXT_PUBLIC_API_URL=https://interview-question-generator-lqa9.onrender.com
+   ```
+
+4. **Run the development server:**
    ```bash
    npm run dev
    ```
 
-4. **Open your browser:**
+5. **Open your browser:**
    Navigate to [http://localhost:3000](http://localhost:3000)
 
 ### Build for Production
@@ -129,7 +140,10 @@ The frontend handles various error scenarios:
 
 ## API Integration
 
-The frontend communicates with the FastAPI backend at `http://localhost:8000/generate-questions`.
+The frontend communicates with the FastAPI backend. The API URL is configured via the `NEXT_PUBLIC_API_URL` environment variable.
+
+- **Local development**: `http://localhost:8000/generate-questions`
+- **Production**: Configure in `.env.local` or environment variables (e.g., `https://interview-question-generator-lqa9.onrender.com/generate-questions`)
 
 **Request Format:**
 - Method: POST
