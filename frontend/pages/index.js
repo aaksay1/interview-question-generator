@@ -289,7 +289,8 @@ export default function Home() {
         <title>Interview Question Generator</title>
         <meta name="description" content="Generate interview questions from resume and job description" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href="/favicon.ico" />
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+        <link rel="alternate icon" href="/favicon.svg" type="image/svg+xml" />
       </Head>
 
       <main className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 py-8 px-4 sm:px-6 lg:px-8">
@@ -502,6 +503,19 @@ export default function Home() {
               </p>
             </div>
           )}
+
+          <footer className="mt-10 pb-6 text-center text-xs text-gray-500">
+            <span>Built by Akin Aksay. </span>
+            <a
+              href="https://github.com/aaksay1/interview-question-generator"
+              target="_blank"
+              rel="noreferrer"
+              className="text-indigo-700 hover:text-indigo-900 underline underline-offset-2"
+            >
+              View the repo on GitHub
+            </a>
+            <span>.</span>
+          </footer>
         </div>
       </main>
     </>
