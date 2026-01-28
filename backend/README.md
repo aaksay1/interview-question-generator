@@ -5,11 +5,11 @@ FastAPI backend service that generates tailored interview questions from resumes
 ## Architecture: ML-Free Design
 
 **No local ML models** - All intelligence handled by Groq LLM API:
-- ✅ Lightweight keyword matching for chunk selection
-- ✅ Groq LLM handles all reasoning and relevance
-- ✅ Optimized for Render Free Tier (512MB RAM)
-- ✅ Fast cold start (<2 seconds)
-- ❌ No embeddings, no FAISS, no HuggingFace, no PyTorch
+- Lightweight keyword matching for chunk selection
+- Groq LLM handles all reasoning and relevance
+- Optimized for Render Free Tier (512MB RAM)
+- Fast cold start (<2 seconds)
+- No embeddings, no FAISS, no HuggingFace, no PyTorch
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for details.
 

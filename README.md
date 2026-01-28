@@ -2,7 +2,7 @@
 
 A full-stack application that generates tailored interview questions from resumes and job descriptions using AI.
 
-## 🎯 Overview
+## Overview
 
 This application uses semantic search and AI to generate contextual interview questions:
 1. **Resume PDF** → Extract text → Chunk text
@@ -10,7 +10,7 @@ This application uses semantic search and AI to generate contextual interview qu
 3. **Job description + Relevant chunks** → LLM (Groq)
 4. **LLM response** → Parse JSON → Return questions
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -56,7 +56,7 @@ npm run dev
 
 Frontend will run on `http://localhost:3000`
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 interview-question-generator/
@@ -100,24 +100,24 @@ interview-question-generator/
 ### Key Features
 
 **Backend:**
-- ✅ File size validation (5MB max)
-- ✅ PDF type validation
-- ✅ Robust PDF parsing (handles blank pages, corrupted files)
-- ✅ Job description validation (10-10,000 characters)
-- ✅ Intelligent text chunking (adapts to resume length)
-- ✅ In-memory FAISS vectorstore (no persistent storage)
-- ✅ Comprehensive error handling
-- ✅ Detailed logging
+- File size validation (5MB max)
+- PDF type validation
+- Robust PDF parsing (handles blank pages, corrupted files)
+- Job description validation (10-10,000 characters)
+- Intelligent text chunking (adapts to resume length)
+- In-memory FAISS vectorstore (no persistent storage)
+- Comprehensive error handling
+- Detailed logging
 
 **Frontend:**
-- ✅ File size validation before upload
-- ✅ Real-time character count
-- ✅ Category-based question grouping
-- ✅ Collapsible category sections
-- ✅ Copy to clipboard (per question)
-- ✅ Download as JSON or CSV
-- ✅ Responsive mobile design
-- ✅ Loading states and error handling
+- File size validation before upload
+- Real-time character count
+- Category-based question grouping
+- Collapsible category sections
+- Copy to clipboard (per question)
+- Download as JSON or CSV
+- Responsive mobile design
+- Loading states and error handling
 
 ## 📖 Usage
 
@@ -130,7 +130,7 @@ interview-question-generator/
 7. **View Results**: Questions displayed grouped by category
 8. **Export**: Download as JSON or CSV
 
-## 🔒 Configuration
+## Configuration
 
 ### Backend
 
@@ -145,7 +145,7 @@ interview-question-generator/
 - **File Size Limit**: 5MB (client-side validation)
 - **Job Description Min**: 10 characters
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Backend Issues
 
@@ -175,13 +175,13 @@ interview-question-generator/
 - Verify file size is under 5MB
 - Try a different PDF file
 
-## 📚 Documentation
+## Documentation
 
 - **Backend Documentation**: See `backend/README.md`
 - **Frontend Documentation**: See `frontend/README.md`
 - **API Documentation**: Available at `http://localhost:8000/docs` when backend is running
 
-## 🧪 Testing
+## Testing
 
 Test files are available in the `backend/` directory:
 - `test_pdf.py`: PDF parsing tests
@@ -196,18 +196,11 @@ python test_pdf.py
 python test_chain.py
 ```
 
-## 🔐 Security Notes
-
-- Never commit `.env` files to version control
-- Keep API keys secure and private
-- The `.gitignore` file excludes `.env` files
-- Use environment variables for all sensitive configuration
-
-## 📝 License
+## License
 
 This project is open source and available for educational and commercial use.
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
