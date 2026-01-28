@@ -4,11 +4,6 @@ python-multipart
 python-dotenv
 langchain
 langchain-groq
-langchain-community
-langchain-huggingface
-langchain-text-splitters
-sentence-transformers
-faiss-cpu
+langchain-core
 PyPDF2
 pdfplumber
-tiktoken

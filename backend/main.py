@@ -1,10 +1,16 @@
 """
 FastAPI backend for generating interview questions from resumes and job descriptions.
 
+ARCHITECTURE: No local ML models - all intelligence via Groq API
+- No embeddings, no FAISS, no HuggingFace, no PyTorch
+- Lightweight keyword matching for chunk selection
+- Groq LLM handles all reasoning and relevance
+- Optimized for Render Free Tier (512MB RAM)
+
 Main Flow:
 1. Resume PDF → Extract text → Chunk text
-2. Chunks → FAISS vectorstore (semantic search)
-3. Job description + Relevant chunks → LLM (Groq)
+2. Chunks → Keyword matching (lightweight, no ML)
+3. Job description + Selected chunks → Groq LLM
 4. LLM response → Parse JSON → Return questions
 
 Run locally: uvicorn backend.main:app --reload
@@ -12,24 +18,23 @@ Run locally: uvicorn backend.main:app --reload
 import os
 import tempfile
 import logging
-import gc
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import FAISS
 from dotenv import load_dotenv
 
 from chains.question_chain import generate_questions_for_jd
 from utils.parsing import extract_questions
 from utils.pdf_parser import pdf_to_text
 from utils.chunker import chunk_resume_text
+from utils.keyword_matcher import select_relevant_chunks
 from utils.validation import (
     validate_file_size,
     validate_pdf_type,
-    validate_job_description
+    validate_job_description,
+    validate_resume_text_length
 )
 
 # Configure logging
@@ -42,56 +47,26 @@ logger = logging.getLogger(__name__)
 # Load environment variables (GROQ_API_KEY)
 load_dotenv()
 
-# Set environment variables to reduce memory usage
-os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Disable tokenizer parallelism to save memory
-
-
-def get_embeddings(app: FastAPI):
-    """
-    Lazy load embeddings model to reduce memory usage on startup.
-    Initializes embeddings on first request and caches for subsequent requests.
-    Uses memory-efficient settings for Render's 512MB limit.
-    Using paraphrase-MiniLM-L3-v2 (smaller model, ~80MB vs ~130MB for L6-v2)
-    """
-    if app.state.embeddings is None:
-        logger.info("Initializing embeddings model (lazy loading with memory optimization)...")
-        app.state.embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/paraphrase-MiniLM-L3-v2",  # Smaller model for Render free tier
-            model_kwargs={
-                'device': 'cpu',  # Use CPU to save memory
-            },
-            encode_kwargs={
-                'normalize_embeddings': True,  # Normalize for better similarity
-                'batch_size': 8,  # Smaller batch size to reduce memory
-            }
-        )
-        logger.info("Embeddings initialized successfully (using paraphrase-MiniLM-L3-v2)")
-    return app.state.embeddings
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Lifespan context manager for FastAPI app.
-    Uses lazy loading for embeddings to reduce memory usage on startup.
+    No ML models loaded - fast cold start (<2s).
     """
-    # Don't load embeddings on startup to save memory
-    # They will be loaded on first request (lazy loading)
-    app.state.embeddings = None
-    logger.info("Application started (embeddings will be loaded on first request)")
+    logger.info("Application starting (no ML models - fast startup)")
     yield
     logger.info("Shutting down...")
 
 
 app = FastAPI(
     title="Interview Question Generator API",
-    description="Generate tailored interview questions from resumes and job descriptions",
-    version="1.0.0",
+    description="Generate tailored interview questions from resumes and job descriptions (ML-free architecture)",
+    version="2.0.0",
     lifespan=lifespan
 )
 
 # Add CORS middleware for frontend
-# Allow requests from localhost (development) and production frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -99,7 +74,7 @@ app.add_middleware(
         "https://interview-question-generator-mocha.vercel.app",  # Production frontend
     ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],  # Explicitly allow needed methods
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
@@ -110,7 +85,8 @@ async def root():
     """Health check endpoint."""
     return {
         "status": "healthy",
-        "message": "Interview Question Generator API is running"
+        "message": "Interview Question Generator API is running (ML-free architecture)",
+        "architecture": "Groq-only (no local ML models)"
     }
 
 
@@ -122,19 +98,23 @@ async def generate_questions(
     """
     Generate interview questions from a resume PDF and job description.
     
+    Architecture: No local ML models
+    - Uses lightweight keyword matching for chunk selection
+    - Groq LLM handles all intelligence and reasoning
+    - Memory-efficient for Render Free Tier (512MB RAM)
+    
     Main processing flow:
-    1. Validate inputs (file type, size, job description)
+    1. Validate inputs (file type, size, text length)
     2. Extract text from PDF resume
-    3. Chunk resume text intelligently (based on length)
-    4. Build FAISS vectorstore from chunks (in-memory)
-    5. Retrieve top 3 relevant chunks using semantic search
-    6. Generate questions using Groq LLM
-    7. Parse JSON from LLM response
-    8. Return questions as JSON
+    3. Chunk resume text (simple text splitting)
+    4. Select relevant chunks using keyword matching (no embeddings)
+    5. Generate questions using Groq LLM
+    6. Parse JSON from LLM response
+    7. Return questions as JSON
     
     Args:
-        resume: PDF file containing the candidate's resume
-        job_description: Text description of the job position
+        resume: PDF file containing the candidate's resume (max 2MB)
+        job_description: Text description of the job position (10-10,000 chars)
         
     Returns:
         JSON response: {"questions": [{"category": "...", "question": "..."}, ...]}
@@ -151,7 +131,7 @@ async def generate_questions(
         logger.info(f"Received request: resume={resume.filename}, job_desc_length={len(job_description)}")
         
         validate_pdf_type(resume.filename)
-        validate_file_size(resume.file)
+        validate_file_size(resume.file)  # Max 2MB
         validate_job_description(job_description)
         
         # ============================================================
@@ -181,13 +161,13 @@ async def generate_questions(
                 detail="Resume PDF contains insufficient text. Please ensure the PDF has extractable text content."
             )
         
+        # Validate resume text length (memory safety)
+        validate_resume_text_length(resume_text)
+        
         # ============================================================
-        # STEP 3: CHUNK RESUME TEXT INTELLIGENTLY
+        # STEP 3: CHUNK RESUME TEXT (SIMPLE TEXT SPLITTING)
         # ============================================================
-        # Chunking strategy adapts based on resume length:
-        # - Short resumes: smaller chunks (500 chars)
-        # - Medium resumes: standard chunks (1000 chars)
-        # - Long resumes: larger chunks (1500 chars)
+        # Lightweight chunking - no ML models required
         logger.info("Chunking resume text...")
         try:
             chunks = chunk_resume_text(resume_text)
@@ -207,74 +187,31 @@ async def generate_questions(
             )
         
         # ============================================================
-        # STEP 4: BUILD FAISS VECTORSTORE (IN-MEMORY)
+        # STEP 4: SELECT RELEVANT CHUNKS (KEYWORD MATCHING)
         # ============================================================
-        # Create embeddings for each chunk and build vectorstore
-        # This enables semantic search to find relevant resume sections
-        # Embeddings are loaded lazily on first request to save memory
-        # Limit chunks to reduce memory usage (max 20 chunks)
-        logger.info("Building FAISS vectorstore...")
-        vectorstore = None
+        # Lightweight keyword matching - no embeddings, no FAISS
+        # Groq LLM will handle all intelligence - this just filters chunks
+        logger.info("Selecting relevant chunks using keyword matching...")
         try:
-            # Limit number of chunks to reduce memory usage
-            max_chunks = 20
-            if len(chunks) > max_chunks:
-                logger.info(f"Limiting chunks from {len(chunks)} to {max_chunks} to save memory")
-                chunks = chunks[:max_chunks]
-            
-            embeddings = get_embeddings(app)  # Lazy load embeddings
-            vectorstore = FAISS.from_texts(
-                chunks,
-                embeddings
-            )
+            selected_chunks = select_relevant_chunks(chunks, job_description, k=5)
+            if not selected_chunks:
+                logger.warning("No chunks selected, using first few chunks")
+                selected_chunks = chunks[:3]  # Fallback to first 3 chunks
+            logger.info(f"Selected {len(selected_chunks)} relevant chunks")
         except Exception as e:
-            logger.error(f"Vectorstore creation error: {str(e)}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error creating vectorstore: {str(e)}"
-            )
+            logger.error(f"Chunk selection error: {str(e)}")
+            # Fallback: use first 5 chunks
+            selected_chunks = chunks[:5]
+            logger.info(f"Using fallback: first {len(selected_chunks)} chunks")
         
         # ============================================================
-        # STEP 5: RETRIEVE RELEVANT RESUME CHUNKS
+        # STEP 5: GENERATE QUESTIONS USING GROQ LLM
         # ============================================================
-        # Use semantic search to find top 3 chunks most relevant to job description
-        logger.info("Retrieving relevant resume chunks using semantic search...")
-        retrieved_docs = None
-        try:
-            retrieved_docs = vectorstore.similarity_search(job_description, k=3)
-            if not retrieved_docs:
-                logger.warning("No relevant documents retrieved")
-                raise HTTPException(
-                    status_code=500,
-                    detail="Failed to retrieve relevant resume sections"
-                )
-            logger.info(f"Retrieved {len(retrieved_docs)} relevant chunks")
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Similarity search error: {str(e)}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error searching resume: {str(e)}"
-            )
-        finally:
-            # Clean up vectorstore to free memory immediately after use
-            if vectorstore is not None:
-                try:
-                    del vectorstore
-                    gc.collect()  # Force garbage collection
-                    logger.info("Vectorstore cleaned up")
-                except Exception as e:
-                    logger.warning(f"Error cleaning up vectorstore: {str(e)}")
-        
-        # ============================================================
-        # STEP 6: GENERATE QUESTIONS USING GROQ LLM
-        # ============================================================
-        # Send job description + relevant resume chunks to LLM
-        # LLM generates tailored interview questions
+        # Groq handles all intelligence - receives job description + selected chunks
         logger.info("Generating questions with Groq LLM...")
         try:
-            llm_response = generate_questions_for_jd(job_description, retrieved_docs)
+            # Pass chunks as simple strings (not Document objects)
+            llm_response = generate_questions_for_jd(job_description, selected_chunks)
         except ValueError as e:
             # API key or validation error
             logger.error(f"LLM configuration error: {str(e)}")
@@ -298,7 +235,7 @@ async def generate_questions(
         logger.info(f"LLM Response (first 500 chars): {llm_response[:500]}")
         
         # ============================================================
-        # STEP 7: PARSE JSON FROM LLM RESPONSE
+        # STEP 6: PARSE JSON FROM LLM RESPONSE
         # ============================================================
         # Extract JSON array from LLM response (may be wrapped in markdown code blocks)
         logger.info("Extracting questions from LLM response...")
@@ -312,10 +249,6 @@ async def generate_questions(
             )
         
         logger.info(f"Successfully generated {len(questions)} questions")
-        
-        # Clean up memory before returning
-        gc.collect()
-        
         return JSONResponse(content={"questions": questions})
         
     except HTTPException:
@@ -335,6 +268,3 @@ async def generate_questions(
                 os.remove(tmp_path)
             except Exception as e:
                 logger.warning(f"Failed to remove temp file: {str(e)}")
-        
-        # Force garbage collection to free memory
-        gc.collect()

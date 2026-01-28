@@ -14,7 +14,7 @@ import { useState } from 'react'
 import Head from 'next/head'
 
 // Constants
-const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB in bytes
+const MAX_FILE_SIZE = 2 * 1024 * 1024 // 2MB in bytes (optimized for memory efficiency)
 const MIN_JOB_DESCRIPTION_LENGTH = 10
 
 // API URL: Use environment variable if set, otherwise default to production backend
@@ -79,7 +79,7 @@ export default function Home() {
     // Validate file size
     if (file.size > MAX_FILE_SIZE) {
       const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2)
-      setFileError(`File size (${fileSizeMB}MB) exceeds the maximum allowed size of 5MB`)
+      setFileError(`File size (${fileSizeMB}MB) exceeds the maximum allowed size of 2MB`)
       setResume(null)
       return
     }
@@ -310,7 +310,7 @@ export default function Home() {
               {/* Resume Upload */}
               <div>
                 <label htmlFor="resume" className="block text-sm font-medium text-gray-700 mb-2">
-                  Resume (PDF) <span className="text-gray-500 text-xs">(Max 5MB)</span>
+                  Resume (PDF) <span className="text-gray-500 text-xs">(Max 2MB)</span>
                 </label>
                 <input
                   type="file"

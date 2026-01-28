@@ -1,15 +1,27 @@
 # Interview Question Generator - Backend
 
-FastAPI backend service that generates tailored interview questions from resumes and job descriptions using AI.
+FastAPI backend service that generates tailored interview questions from resumes and job descriptions.
+
+## Architecture: ML-Free Design
+
+**No local ML models** - All intelligence handled by Groq LLM API:
+- ✅ Lightweight keyword matching for chunk selection
+- ✅ Groq LLM handles all reasoning and relevance
+- ✅ Optimized for Render Free Tier (512MB RAM)
+- ✅ Fast cold start (<2 seconds)
+- ❌ No embeddings, no FAISS, no HuggingFace, no PyTorch
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for details.
 
 ## Features
 
 - **PDF Resume Processing**: Extracts text from PDF resumes with robust error handling
-- **Semantic Search**: Uses FAISS vectorstore to find relevant resume sections
+- **Lightweight Chunk Selection**: Keyword-based matching (no ML models)
 - **AI-Powered Question Generation**: Leverages Groq LLM to generate contextual interview questions
-- **Input Validation**: Validates file size (5MB max), file type (PDF only), and job description length
+- **Input Validation**: Validates file size (2MB max), file type (PDF only), and text length limits
 - **Error Handling**: Comprehensive error handling with clear error messages
 - **Logging**: Detailed logging for debugging and monitoring
+- **Memory Efficient**: Runs comfortably under 512MB RAM
 
 ## Setup
 
@@ -61,8 +73,8 @@ FastAPI backend service that generates tailored interview questions from resumes
 Generates interview questions from a resume PDF and job description.
 
 **Request:**
-- `resume` (file): PDF file (max 5MB)
-- `job_description` (form field): Text description of the job (10-10000 characters)
+- `resume` (file): PDF file (max 2MB)
+- `job_description` (form field): Text description of the job (10-10,000 characters)
 
 **Response:**
 ```json
@@ -105,17 +117,19 @@ backend/
 ## Configuration
 
 ### File Size Limits
-- Maximum resume file size: 5MB (configurable in `utils/validation.py`)
+- Maximum resume file size: 2MB (optimized for memory efficiency)
+- Maximum extracted text length: 15,000 characters
 
 ### Job Description Limits
 - Minimum length: 10 characters
 - Maximum length: 10,000 characters
 
 ### Chunking Strategy
-The system automatically adjusts chunking based on resume length:
-- Short resumes (< 2000 chars): Smaller chunks (500 chars) with more overlap
-- Medium resumes (2000-10000 chars): Standard chunks (1000 chars)
-- Long resumes (> 10000 chars): Larger chunks (1500 chars) with more overlap
+Simple text-based chunking (no ML models):
+- Short resumes (< 2000 chars): 500 char chunks
+- Medium resumes (2000-10000 chars): 1000 char chunks
+- Long resumes (> 10000 chars): 1200 char chunks
+- Top 5 chunks selected using lightweight keyword matching
 
 ## Error Handling
 
@@ -179,11 +193,10 @@ Test files are available in the backend directory:
    ```
    (Render sets `$PORT` automatically)
 
-4. **Memory Considerations:**
-   - The embeddings model uses ~200-300MB of memory
-   - Render's free tier has 512MB limit
-   - Embeddings are loaded lazily (on first request) to reduce startup memory
-   - Consider upgrading to a paid plan if you need more memory
+4. **Memory Usage:**
+   - Total memory: ~130-220MB (well under 512MB limit)
+   - No ML models loaded - fast cold start (<2 seconds)
+   - Optimized for Render Free Tier
 
 ## Troubleshooting
 

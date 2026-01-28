@@ -1,12 +1,14 @@
 """
 LLM chain for generating interview questions from job descriptions and resumes.
 
-This module handles communication with Groq LLM to generate tailored
-interview questions based on job descriptions and relevant resume sections.
+ARCHITECTURE: Groq-only - no local ML models
+- All intelligence handled by Groq LLM
+- Receives simple text chunks (no Document objects, no embeddings)
+- Groq handles all reasoning and relevance matching
 """
 import os
 import logging
-from typing import List
+from typing import List, Union
 
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -27,17 +29,18 @@ Rules:
 - Questions must reference the candidate's experience implicitly or explicitly
 - Avoid generic questions
 - Prefer follow-up and depth-probing questions
-- Output must be realistic and role-specific"""
+- Output must be realistic and role-specific
+- Return ONLY valid JSON - no markdown, no explanations"""
 
 QUESTION_PROMPT_TEMPLATE = """Job description:
 {job_description}
 
-Relevant resume context:
+Relevant resume sections:
 {resume_context}
 
 Generate 5 interview questions that a real interviewer would ask.
 
-Return JSON with this schema:
+Return ONLY valid JSON (no markdown code blocks, no explanations):
 [
   {{
     "category": "Technical | Behavioral | Role-Specific",
@@ -65,21 +68,26 @@ def get_groq_api_key() -> str:
     return api_key
 
 
-def generate_questions_for_jd(job_description: str, resume_chunks: List) -> str:
+def generate_questions_for_jd(job_description: str, resume_chunks: List[Union[str, any]]) -> str:
     """
     Generates interview questions using Groq LLM.
+    
+    ARCHITECTURE: No local ML models
+    - Receives simple text chunks (strings) from keyword matching
+    - Groq LLM handles all intelligence and relevance
+    - No embeddings, no FAISS, no Document objects
     
     Flow:
     1. Get API key from environment
     2. Initialize ChatGroq LLM
-    3. Convert resume chunks to text
+    3. Convert resume chunks to text (handles both strings and objects)
     4. Format prompt with job description + resume context
     5. Call LLM with system + user messages
     6. Extract text content from AIMessage response
     
     Args:
         job_description: Job description text
-        resume_chunks: List of Document objects from FAISS similarity search
+        resume_chunks: List of strings (or objects with page_content) from keyword matching
         
     Returns:
         LLM response as string (contains JSON array of questions)
@@ -99,10 +107,12 @@ def generate_questions_for_jd(job_description: str, resume_chunks: List) -> str:
             groq_api_key=api_key
         )
 
-        # Convert Document objects to strings
-        # FAISS returns Document objects with page_content attribute
+        # Convert chunks to strings (handles both strings and Document-like objects)
+        # No FAISS anymore - chunks are simple strings from keyword matching
         resume_texts = [
-            chunk.page_content if hasattr(chunk, "page_content") else str(chunk) 
+            chunk if isinstance(chunk, str) else (
+                chunk.page_content if hasattr(chunk, "page_content") else str(chunk)
+            )
             for chunk in resume_chunks
         ]
         resume_context = "\n\n".join(resume_texts)
